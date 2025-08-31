@@ -3,7 +3,7 @@
 import { Database, CheckCircle, Clock } from 'lucide-react';
 
 interface ProcessingAnimationProps {
-  step: 'sending' | 'processing' | 'saving';
+  step: 'sending' | 'processing' | 'saving' | 'ai-analysis' | 'chart-generation';
 }
 
 export function ProcessingAnimation({ step }: ProcessingAnimationProps) {
@@ -11,6 +11,8 @@ export function ProcessingAnimation({ step }: ProcessingAnimationProps) {
     { id: 'sending', label: 'Veriler gönderiliyor...', icon: Clock },
     { id: 'processing', label: 'İşleniyor...', icon: Database },
     { id: 'saving', label: 'Veritabanına kaydediliyor...', icon: CheckCircle },
+    { id: 'ai-analysis', label: 'Abidin analiz yapıyor...', icon: Database },
+    { id: 'chart-generation', label: 'Grafik oluşturuluyor...', icon: CheckCircle },
   ];
 
   const currentStepIndex = steps.findIndex(s => s.id === step);

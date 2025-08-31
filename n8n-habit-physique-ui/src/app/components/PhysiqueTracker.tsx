@@ -19,8 +19,11 @@ export function PhysiqueTracker() {
   });
   
   const [isLoading, setIsLoading] = useState(false);
-  const [processingStep, setProcessingStep] = useState<'sending' | 'processing' | 'saving'>('sending');
+  const [processingStep, setProcessingStep] = useState<'sending' | 'processing' | 'saving' | 'ai-analysis' | 'chart-generation'>('sending');
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
+  const [aiResponse, setAiResponse] = useState<string>('');
+  const [chartUrl, setChartUrl] = useState<string>('');
+  const [loadingMessages, setLoadingMessages] = useState<string[]>([]);
 
   const measurements = [
     { key: 'weight' as keyof PhysiqueData, label: 'Kilo (kg)', icon: Scale, placeholder: '75' },
@@ -59,55 +62,74 @@ export function PhysiqueTracker() {
   const handleSubmit = async () => {
     setIsLoading(true);
     setMessage(null);
+    setAiResponse('');
+    setChartUrl('');
+    setLoadingMessages([]);
     setProcessingStep('sending');
 
     try {
-      // Step 1: Sending
-      setTimeout(() => setProcessingStep('processing'), 500);
+      // Step 1: Veriler gönderiliyor
+      setLoadingMessages(['📤 Fiziksel ölçüm verileri gönderiliyor...']);
       
-      // Step 2: Processing (after 1.5 seconds)
-      setTimeout(() => setProcessingStep('saving'), 1500);
+      // Step 2: İşleniyor (1 saniye sonra)
+      setTimeout(() => {
+        setProcessingStep('processing');
+        setLoadingMessages(prev => [...prev, '⚙️ Veriler işleniyor...']);
+      }, 1000);
       
+      // Step 3: Veritabanına kaydediliyor (2 saniye sonra)
+      setTimeout(() => {
+        setProcessingStep('saving');
+        setLoadingMessages(prev => [...prev, '💾 Veritabanına kaydediliyor...']);
+      }, 2000);
+      
+      // Step 4: AI analizi (3 saniye sonra)
+      setTimeout(() => {
+        setProcessingStep('ai-analysis');
+        setLoadingMessages(prev => [...prev, '🤖 Abidin verileri analiz ediyor...']);
+      }, 3000);
+      
+      // Step 5: Grafik oluşturuluyor (4 saniye sonra)
+      setTimeout(() => {
+        setProcessingStep('chart-generation');
+        setLoadingMessages(prev => [...prev, '📊 İlerleme grafiği oluşturuluyor...']);
+      }, 4000);
+      
+      // Tek API çağrısı - hem AI yorumu hem grafik
       const response = await apiClient.sendPhysiqueData(physiqueData);
       
+      console.log('PhysiqueTracker Response:', response);
+      
       if (response.success) {
-        // Hesaplama hatası durumu kontrolü
-        if (response.isCalculationError) {
-          toast.error(
-            'Hesaplama Hatası!', 
-            'Girilen verilerle hesaplama yapılamadı. Lütfen verilerinizi kontrol edin.',
-            6000
-          );
-          setMessage({ type: 'error', text: 'Hesaplama aşamasında hata oluştu!' });
+        // AI yorumu ve grafik set et
+        if (response.response) {
+          setAiResponse(response.response);
+          setLoadingMessages(prev => [...prev, '✅ AI yorumu alındı!']);
         }
-        // DB insert durumuna göre farklı toast göster
-        else if (response.isDbInsertSuccessful) {
-          toast.success(
-            'Başarılı!', 
-            'Fiziksel ölçüm verileriniz veritabanına kaydedildi.',
-            4000
-          );
-          setMessage({ type: 'success', text: response.message || 'Başarılı!' });
-          
-          // Reset form after successful submission
-          setPhysiqueData({
-            weight: 0,
-            height: 0,
-            waist: 0,
-            neck: 0,
-            hip: 0,
-            shoulder: 0,
-            chest: 0,
-            note: ''
-          });
-        } else {
-          toast.warning(
-            'Uyarı!', 
-            'Veriler işlendi ancak veritabanına kaydedilemedi.',
-            6000
-          );
-          setMessage({ type: 'warning', text: 'Veriler işlendi ancak veritabanına kaydedilemedi.' });
+        
+        if (response.chartUrl) {
+          setChartUrl(response.chartUrl);
+          setLoadingMessages(prev => [...prev, '📈 Grafik hazır!']);
         }
+        
+        toast.success(
+          'Başarılı!', 
+          'Fiziksel ölçüm verileriniz başarıyla işlendi.',
+          4000
+        );
+        setMessage({ type: 'success', text: response.message || 'Başarılı!' });
+        
+        // Form sıfırla
+        setPhysiqueData({
+          weight: 0,
+          height: 0,
+          waist: 0,
+          neck: 0,
+          hip: 0,
+          shoulder: 0,
+          chest: 0,
+          note: ''
+        });
       } else {
         toast.error(
           'Hata!', 
@@ -124,7 +146,9 @@ export function PhysiqueTracker() {
       );
       setMessage({ type: 'error', text: 'Beklenmeyen bir hata oluştu!' });
     } finally {
-      setIsLoading(false);
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 7000); // 7 saniye sonra loading'i kapat
     }
   };
 
@@ -213,6 +237,28 @@ export function PhysiqueTracker() {
         )}
       </button>
 
+      {/* Processing Animation */}
+      {isLoading && (
+        <div className="mt-6">
+          <ProcessingAnimation step={processingStep} />
+          
+          {/* Live Loading Messages */}
+          {loadingMessages.length > 0 && (
+            <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+              <h4 className="text-lg font-semibold text-blue-800 dark:text-blue-400 mb-2">🔄 İşlem Durumu</h4>
+              <div className="space-y-2">
+                {loadingMessages.map((msg, index) => (
+                  <div key={index} className="flex items-center text-blue-700 dark:text-blue-300">
+                    <span className="mr-2">•</span>
+                    <span>{msg}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Message Display */}
       {message && (
         <div className={`mt-4 p-3 rounded-lg ${
@@ -223,6 +269,53 @@ export function PhysiqueTracker() {
             : 'bg-red-100 border border-red-400 text-red-700 dark:bg-red-900/20 dark:border-red-600 dark:text-red-400'
         }`}>
           {message.text}
+        </div>
+      )}
+
+      {/* AI Response */}
+      {aiResponse && (
+        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+          <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-400 mb-2">🤖 Abidin'in Yorumu</h3>
+          <p className="text-blue-700 dark:text-blue-300 whitespace-pre-wrap">{aiResponse}</p>
+        </div>
+      )}
+
+      {/* Chart */}
+      {chartUrl && (
+        <div className="mt-6 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+          <h3 className="text-lg font-semibold text-green-800 dark:text-green-400 mb-3">📊 Haftalık İlerleme Grafiği</h3>
+          <div className="flex justify-center">
+            <img 
+              src={chartUrl} 
+              alt="Physique Progress Chart" 
+              className="max-w-full h-auto rounded-lg shadow-md"
+              onError={(e) => {
+                console.error('Chart image failed to load:', chartUrl);
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Demo Test Butonu - Test amaçlı */}
+      {!aiResponse && !chartUrl && (
+        <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg border border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-400 mb-2">📋 Test Alanı</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Ölçümlerinizi girdikten sonra "Ölçümleri Kaydet" butonuna basarak AI yorumunu ve haftalık grafiği görebilirsiniz.
+          </p>
+          <button
+            onClick={() => {
+              // Demo AI response
+              setAiResponse("Kanka bak BMI'n 23.2 çıkmış, gayet normal aralıkta duruyorsun. Yağ oranın %15 civarı kas kütlen de 60kg falan, idare eder işte. Fazla kasma kendini ama düzenli sporu ihmal etme ha!");
+              // Demo chart URL (QuickChart örneği)
+              setChartUrl("https://quickchart.io/chart?c={type:'line',data:{labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],datasets:[{label:'Weight',data:[70,71,70.5,72,71.5,71,70.8],borderColor:'blue',fill:false}]},options:{plugins:{title:{display:true,text:'Weekly Progress'}}}}");
+            }}
+            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+          >
+            🧪 Demo Görünümü Göster
+          </button>
         </div>
       )}
 

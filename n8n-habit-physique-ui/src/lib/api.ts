@@ -41,6 +41,7 @@ export interface ApiResponse {
   message?: string;
   data?: any;
   response?: string; // AI'ın cevabı için
+  chartUrl?: string; // Grafik URL'si için
   isDbInsertSuccessful?: boolean; // DB insert başarı durumu
   isCalculationError?: boolean; // Hesaplama hatası durumu
 }
@@ -117,67 +118,97 @@ export class ApiClient {
     }
   }
 
-  // Send physique data (navigate: 2)
+  // Send physique data (navigate: 2) - Handles both AI response and chart
   async sendPhysiqueData(data: PhysiqueData): Promise<ApiResponse> {
     try {
       const message = `-msr ${data.weight},${data.height},${data.waist},${data.neck},${data.hip},${data.shoulder},${data.chest},${data.note}`;
+      
+      console.log('Sending physique data:', { message });
+      
+      // Tek API çağrısı - n8n Merge node'u tüm veriyi birleştiriyor
       const response = await this.axiosInstance.get('', {
         params: {
           message,
           navigate: 2,
           type: 'physique'
+        },
+        validateStatus: function (status) {
+          return status < 500;
         }
       });
       
-      // n8n workflow'un veritabanına kayıt yapması için 3 saniye bekle
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log('Full Response:', {
+        status: response.status,
+        headers: response.headers,
+        data: response.data,
+        dataType: typeof response.data,
+        isArray: Array.isArray(response.data)
+      });
       
-      // HTTP status koduna göre işlem durumunu kontrol et
-      // 211 = Veriler uygun, DB'ye kaydedildi
-      // 411 = Hesaplama aşamasında hata
-      const isDbInsertSuccessful = response.status === 211;
-      const isCalculationError = response.status === 411;
-      
-      return {
-        success: true,
-        message: response.data?.message || 'Fiziksel ölçüm verisi başarıyla gönderildi!',
-        data: response.data?.data,
-        response: response.data?.response,
-        isDbInsertSuccessful,
-        isCalculationError
-      };
-    } catch (error: any) {
-      console.error('Physique data send error:', error);
-      
-      // HTTP 411 hatası = Hesaplama aşamasında hata
-      if (error.response?.status === 411) {
+      // Status kod kontrolü
+      if (response.status === 400) {
         return {
-          success: true, // Workflow çalıştı
-          message: 'Hesaplama aşamasında hata oluştu.',
-          data: error.response.data,
-          response: error.response.data?.response,
-          isDbInsertSuccessful: false,
-          isCalculationError: true
+          success: false,
+          message: 'Hesaplama sırasında hata oluştu. Lütfen girdiğiniz değerleri kontrol edin.',
+          isDbInsertSuccessful: false
         };
       }
       
-      // HTTP 400 hatası = Diğer başarısızlık durumları
-      if (error.response?.status === 400) {
+      // Status 200 kabul et
+      if (response.status === 200) {
+        const responseData = response.data;
+        console.log('Response data:', responseData);
+        
+        let aiResponse = '';
+        let chartUrl = '';
+        
+        // Basit JSON format: {ai_response: "...", chart_data: "...", success: true}
+        if (responseData && typeof responseData === 'object') {
+          // AI response
+          if (responseData.ai_response) {
+            aiResponse = responseData.ai_response;
+          }
+          
+          // Chart data'yı parse et
+          if (responseData.chart_data) {
+            try {
+              const chartConfig = JSON.parse(responseData.chart_data);
+              const chartConfigStr = JSON.stringify(chartConfig);
+              chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(chartConfigStr)}`;
+              console.log('Chart URL generated successfully');
+            } catch (error) {
+              console.error('Chart parsing error:', error);
+            }
+          }
+        }
+        
         return {
-          success: true, // Workflow çalıştı
-          message: 'Veriler işlendi ancak veritabanına kaydedilemedi.',
-          data: error.response.data,
-          response: error.response.data?.response,
-          isDbInsertSuccessful: false,
-          isCalculationError: false
+          success: true,
+          message: 'Fiziksel ölçüm verileriniz başarıyla işlendi!',
+          response: aiResponse || 'AI yorumu alınamadı',
+          chartUrl: chartUrl || '',
+          isDbInsertSuccessful: true
         };
       }
       
       return {
         success: false,
+        message: `Beklenmeyen yanıt kodu: ${response.status}`,
+        isDbInsertSuccessful: false
+      };
+      
+    } catch (error: any) {
+      console.error('Physique data send error:', error);
+      
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+        console.error('Error response status:', error.response.status);
+      }
+      
+      return {
+        success: false,
         message: 'Fiziksel ölçüm verisi gönderilemedi. Lütfen tekrar deneyin.',
-        isDbInsertSuccessful: false,
-        isCalculationError: false
+        isDbInsertSuccessful: false
       };
     }
   }
