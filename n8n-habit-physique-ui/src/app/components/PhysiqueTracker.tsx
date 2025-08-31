@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { apiClient, PhysiqueData } from '@/lib/api';
+import { toast } from './Toast';
+import { ProcessingAnimation } from './ProcessingAnimation';
 import { Send, Scale, Ruler, User } from 'lucide-react';
 
 export function PhysiqueTracker() {
@@ -17,7 +19,8 @@ export function PhysiqueTracker() {
   });
   
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [processingStep, setProcessingStep] = useState<'sending' | 'processing' | 'saving'>('sending');
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
 
   const measurements = [
     { key: 'weight' as keyof PhysiqueData, label: 'Kilo (kg)', icon: Scale, placeholder: '75' },
@@ -56,27 +59,69 @@ export function PhysiqueTracker() {
   const handleSubmit = async () => {
     setIsLoading(true);
     setMessage(null);
+    setProcessingStep('sending');
 
     try {
+      // Step 1: Sending
+      setTimeout(() => setProcessingStep('processing'), 500);
+      
+      // Step 2: Processing (after 1.5 seconds)
+      setTimeout(() => setProcessingStep('saving'), 1500);
+      
       const response = await apiClient.sendPhysiqueData(physiqueData);
       
       if (response.success) {
-        setMessage({ type: 'success', text: response.message || 'Başarılı!' });
-        // Reset form after successful submission
-        setPhysiqueData({
-          weight: 0,
-          height: 0,
-          waist: 0,
-          neck: 0,
-          hip: 0,
-          shoulder: 0,
-          chest: 0,
-          note: ''
-        });
+        // Hesaplama hatası durumu kontrolü
+        if (response.isCalculationError) {
+          toast.error(
+            'Hesaplama Hatası!', 
+            'Girilen verilerle hesaplama yapılamadı. Lütfen verilerinizi kontrol edin.',
+            6000
+          );
+          setMessage({ type: 'error', text: 'Hesaplama aşamasında hata oluştu!' });
+        }
+        // DB insert durumuna göre farklı toast göster
+        else if (response.isDbInsertSuccessful) {
+          toast.success(
+            'Başarılı!', 
+            'Fiziksel ölçüm verileriniz veritabanına kaydedildi.',
+            4000
+          );
+          setMessage({ type: 'success', text: response.message || 'Başarılı!' });
+          
+          // Reset form after successful submission
+          setPhysiqueData({
+            weight: 0,
+            height: 0,
+            waist: 0,
+            neck: 0,
+            hip: 0,
+            shoulder: 0,
+            chest: 0,
+            note: ''
+          });
+        } else {
+          toast.warning(
+            'Uyarı!', 
+            'Veriler işlendi ancak veritabanına kaydedilemedi.',
+            6000
+          );
+          setMessage({ type: 'warning', text: 'Veriler işlendi ancak veritabanına kaydedilemedi.' });
+        }
       } else {
+        toast.error(
+          'Hata!', 
+          response.message || 'Bir hata oluştu!',
+          5000
+        );
         setMessage({ type: 'error', text: response.message || 'Bir hata oluştu!' });
       }
     } catch (error) {
+      toast.error(
+        'Bağlantı Hatası!', 
+        'Beklenmeyen bir hata oluştu!',
+        5000
+      );
       setMessage({ type: 'error', text: 'Beklenmeyen bir hata oluştu!' });
     } finally {
       setIsLoading(false);
@@ -173,6 +218,8 @@ export function PhysiqueTracker() {
         <div className={`mt-4 p-3 rounded-lg ${
           message.type === 'success' 
             ? 'bg-green-100 border border-green-400 text-green-700 dark:bg-green-900/20 dark:border-green-600 dark:text-green-400' 
+            : message.type === 'warning'
+            ? 'bg-yellow-100 border border-yellow-400 text-yellow-700 dark:bg-yellow-900/20 dark:border-yellow-600 dark:text-yellow-400'
             : 'bg-red-100 border border-red-400 text-red-700 dark:bg-red-900/20 dark:border-red-600 dark:text-red-400'
         }`}>
           {message.text}

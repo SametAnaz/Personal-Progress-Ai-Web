@@ -2,13 +2,14 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { apiClient, ChatMessage } from '@/lib/api';
-import { Send, Bot, User } from 'lucide-react';
+import { Send, Bot, User, Check, X } from 'lucide-react';
 
 interface Message {
   id: string;
   text: string;
   isUser: boolean;
   timestamp: Date;
+  status?: 'sending' | 'sent' | 'failed'; // WhatsApp tarzı durum
 }
 
 export function ChatInterface() {
@@ -33,47 +34,76 @@ export function ChatInterface() {
     scrollToBottom();
   }, [messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleSendMessage = async () => {
     if (!currentMessage.trim() || isLoading) return;
 
+    const userMessageId = Date.now().toString();
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: userMessageId,
       text: currentMessage,
       isUser: true,
-      timestamp: new Date()
+      timestamp: new Date(),
+      status: 'sending'
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageToSend = currentMessage;
     setCurrentMessage('');
     setIsLoading(true);
 
     try {
-      const response = await apiClient.sendChatMessage({ message: currentMessage });
+      const response = await apiClient.sendChatMessage({ message: messageToSend });
       
-      // Bot response
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: response.success 
-          ? response.data?.reply || 'Mesajın alındı! Abidin birazdan cevap verecek.' 
-          : response.message || 'Üzgünüm, şu an cevap veremiyorum. Daha sonra tekrar dener misin?',
-        isUser: false,
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, botMessage]);
+      // User message status'unu güncelle
+      setMessages(prev => prev.map(msg => 
+        msg.id === userMessageId 
+          ? { ...msg, status: response.success ? 'sent' : 'failed' }
+          : msg
+      ));
+      
+      // n8n'den gelen text response'unu handle et
+      let botResponseText = 'Üzgünüm, cevap alınamadı.';
+      
+      if (response.success && response.response) {
+        botResponseText = response.response;
+      } else if (response.message) {
+        botResponseText = response.message;
+      }
+      
+      // Bot response (sadece başarılı ise)
+      if (response.success) {
+        const botMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          text: botResponseText,
+          isUser: false,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, botMessage]);
+      }
     } catch (error) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: 'Bağlantı hatası oluştu. Lütfen daha sonra tekrar deneyin.',
-        isUser: false,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      console.error('Chat error:', error);
+      
+      // User message'ı failed olarak işaretle
+      setMessages(prev => prev.map(msg => 
+        msg.id === userMessageId 
+          ? { ...msg, status: 'failed' }
+          : msg
+      ));
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSendMessage();
   };
 
   const formatTime = (date: Date) => {
@@ -127,9 +157,31 @@ export function ChatInterface() {
               }`}>
                 <p className="text-sm whitespace-pre-wrap">{message.text}</p>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {formatTime(message.timestamp)}
-              </p>
+              <div className={`flex items-center gap-1 mt-1 ${message.isUser ? 'justify-end' : 'justify-start'}`}>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {formatTime(message.timestamp)}
+                </p>
+                {/* WhatsApp tarzı status indicator (sadece user mesajları için) */}
+                {message.isUser && message.status && (
+                  <div className="flex items-center">
+                    {message.status === 'sending' && (
+                      <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin ml-1"></div>
+                    )}
+                    {message.status === 'sent' && (
+                      <div className="flex">
+                        <Check size={12} className="text-green-500" />
+                        <Check size={12} className="text-green-500 -ml-1" />
+                      </div>
+                    )}
+                    {message.status === 'failed' && (
+                      <div className="flex">
+                        <X size={12} className="text-red-500" />
+                        <X size={12} className="text-red-500 -ml-1" />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}

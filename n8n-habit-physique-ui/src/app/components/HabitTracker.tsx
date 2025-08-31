@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { apiClient, HabitData } from '@/lib/api';
+import { toast } from './Toast';
+import { ProcessingAnimation } from './ProcessingAnimation';
 import { CheckCircle, XCircle, Send, BookOpen, Code, Dumbbell, Users } from 'lucide-react';
 
 export function HabitTracker() {
@@ -14,6 +16,7 @@ export function HabitTracker() {
   });
   
   const [isLoading, setIsLoading] = useState(false);
+  const [processingStep, setProcessingStep] = useState<'sending' | 'processing' | 'saving'>('sending');
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   const habits = [
@@ -35,12 +38,35 @@ export function HabitTracker() {
   const handleSubmit = async () => {
     setIsLoading(true);
     setMessage(null);
+    setProcessingStep('sending');
 
     try {
+      // Step 1: Sending
+      setTimeout(() => setProcessingStep('processing'), 500);
+      
+      // Step 2: Processing (after 1.5 seconds)
+      setTimeout(() => setProcessingStep('saving'), 1500);
+      
       const response = await apiClient.sendHabitData(habitData);
       
       if (response.success) {
+        // DB insert durumuna göre farklı toast göster
+        if (response.isDbInsertSuccessful) {
+          toast.success(
+            'Başarılı!', 
+            'Alışkanlık verileriniz veritabanına kaydedildi.',
+            4000
+          );
+        } else {
+          toast.warning(
+            'Uyarı!', 
+            'Veriler işlendi ancak veritabanına kaydedilemedi.',
+            6000
+          );
+        }
+        
         setMessage({ type: 'success', text: response.message || 'Başarılı!' });
+        
         // Reset form after successful submission
         setHabitData({
           study: 0,
@@ -50,9 +76,19 @@ export function HabitTracker() {
           note: ''
         });
       } else {
+        toast.error(
+          'Hata!', 
+          response.message || 'Bir hata oluştu!',
+          5000
+        );
         setMessage({ type: 'error', text: response.message || 'Bir hata oluştu!' });
       }
     } catch (error) {
+      toast.error(
+        'Bağlantı Hatası!', 
+        'Beklenmeyen bir hata oluştu!',
+        5000
+      );
       setMessage({ type: 'error', text: 'Beklenmeyen bir hata oluştu!' });
     } finally {
       setIsLoading(false);
@@ -65,8 +101,13 @@ export function HabitTracker() {
         Günlük Alışkanlık Takibi
       </h2>
 
-      {/* Habit Toggles */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      {/* Loading Animation */}
+      {isLoading ? (
+        <ProcessingAnimation step={processingStep} />
+      ) : (
+        <>
+          {/* Habit Toggles */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
         {habits.map((habit) => {
           const Icon = habit.icon;
           const isActive = habitData[habit.key] === 1;
@@ -156,6 +197,8 @@ export function HabitTracker() {
           1 = Yaptım, 0 = Yapmadım
         </p>
       </div>
+        </>
+      )}
     </div>
   );
 }
